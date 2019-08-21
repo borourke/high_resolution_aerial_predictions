@@ -11,7 +11,7 @@ import argparse
 import os
 import cv2
 
-class_selection = input("If you would like to prioritize a type of vehicle please choose (1 - Pickup, 2 - Sedan, 3 - Other, 4 - Unknown, 5 - All): ")
+class_selection = input("If you would like to prioritize a type of vehicle please choose (1 - Sedan, 2 - SUV/Truck, 3 - Other, 4 - Unknown, 5 - All): ")
 
 #
 # Set up configs
@@ -27,6 +27,8 @@ CONFIDENCE_THRESHOLD = 0.7
 # Cropped image size
 X_AXIS = 256
 Y_AXIS = 256
+CROPPED_RATIO = 2
+BANDWIDTH = X_AXIS * CROPPED_RATIO
 
 # Ground truth images
 ground_truth_images = listdir(GROUND_TRUTH_DIRECTORY)
@@ -35,7 +37,7 @@ ground_truth_images.remove(".DS_Store")
 # Labels CSV
 LABELS = open(CLASSES_FILE).read().strip().split('\n')
 LABELS = {int(L.split(",")[1]): L.split(",")[0] for L in LABELS}
-CLASSES = {'1': 'Pickup', '2': 'Sedan', '3': 'Other', '4': 'Unknown'}
+CLASSES = {'1': 'Sedan', '2': 'SUV/Truck', '3': 'Other', '4': 'Unknown'}
 
 # Load the model
 model = models.load_model(MODEL_FILE, backbone_name='resnet50')
@@ -57,19 +59,22 @@ for ground_truth_image_name in ground_truth_images:
         if(cropped_ymax >= height):
             cropped_ymax = height
             cropped_ymin = cropped_ymax - Y_AXIS
-        print("Doing y counter for...'{}'".format(y_counter))
-        print("Ymin...'{}'".format(cropped_ymin))
-        print("Ymax...'{}'".format(cropped_ymax))
+        print("[{}] - Doing y counter for...'{}'".format(ground_truth_image_name, y_counter))
+        print("[{}] - Ymin...'{}'".format(ground_truth_image_name, cropped_ymin))
+        print("[{}] - Ymax...'{}'".format(ground_truth_image_name, cropped_ymax))
         for x_counter in range(x_boxes_count):
             cropped_xmin = x_counter * (X_AXIS / 2)
             cropped_xmax = cropped_xmin + X_AXIS
             if(cropped_xmax >= width):
                 cropped_xmax = width
                 cropped_xmin = cropped_xmax - X_AXIS
-            print("    Doing x counter for...'{}'".format(x_counter))
-            print("    Xmin...'{}'".format(cropped_xmin))
-            print("    Xmax...'{}'".format(cropped_xmax))
+            print("[{}] -     Doing x counter for...'{}'".format(ground_truth_image_name, x_counter))
+            print("[{}] -     Xmin...'{}'".format(ground_truth_image_name, cropped_xmin))
+            print("[{}] -     Xmax...'{}'".format(ground_truth_image_name, cropped_xmax))
             cropped = ground_truth_image.crop((cropped_xmin, cropped_ymin, cropped_xmax, cropped_ymax))
+            wpercent = (BANDWIDTH/float(cropped.size[0]))
+            hsize = int((float(cropped.size[1])*float(wpercent)))
+            cropped = cropped.resize((BANDWIDTH,hsize), Image.LANCZOS)
             cropped.save(TEMPORARY_CROPPED_IMAGE_NAME, "JPEG")
 
             # Prediction time
@@ -102,10 +107,10 @@ for ground_truth_image_name in ground_truth_images:
                 # Add each prediction to a set in memory
                 # Offset coordinates by image cropping offset
                 # Example Filename: <name>-0.png-1.<xmin>-2.<ymin>-3.<xmax>-4.<ymax>-5.txt-6
-                xmin = int(box[0])+cropped_xmin
-                ymin = int(box[1])+cropped_ymin
-                xmax = int(box[2])+cropped_xmin
-                ymax = int(box[3])+cropped_ymin
+                xmin = int(box[0]/CROPPED_RATIO)+cropped_xmin
+                ymin = int(box[1]/CROPPED_RATIO)+cropped_ymin
+                xmax = int(box[2]/CROPPED_RATIO)+cropped_xmin
+                ymax = int(box[3]/CROPPED_RATIO)+cropped_ymin
 
                 ground_truth_image_predictions.append({'xmin': int(xmin), 'ymin': int(ymin), 'xmax': int(xmax), 'ymax': int(ymax), 'class': LABELS[label], 'confidence': score})
 
@@ -114,9 +119,9 @@ for ground_truth_image_name in ground_truth_images:
     img = cv2.imread(ground_truth_image_path)
     for prediction in ground_truth_image_predictions:
         object_class = CLASSES[str(prediction['class'])]
-        if(object_class == 'Sedan'):
+        if(object_class == 'SUV/Truck'):
             box_color = (0,255,0)
-        elif(object_class == 'Pickup'):
+        elif(object_class == 'Sedan'):
             box_color = (255,0,0)
         elif(object_class == 'Other'):
             box_color = (0,0,255)
@@ -133,3 +138,16 @@ for ground_truth_image_name in ground_truth_images:
         img = cv2.putText(img, object_class, bottomLeftCornerOfText, font, fontScale, fontColor, lineType)
 
     cv2.imwrite(os.path.sep.join([OUTPUT_FILE_PATH, "predicted-{}".format(ground_truth_image_name)]), img)
+
+    ground_truth_image = Image.open(ground_truth_image_path)
+    counter = 0
+    basewidth = 128
+    for prediction in ground_truth_image_predictions:
+        if(counter >= 5):
+            break
+        counter += 1
+        cropped = ground_truth_image.crop((int(prediction['xmin']), int(prediction['ymin']), int(prediction['xmax']), int(prediction['ymax'])))
+        wpercent = (basewidth/float(cropped.size[0]))
+        hsize = int((float(cropped.size[1])*float(wpercent)))
+        cropped = cropped.resize((basewidth,hsize), Image.ANTIALIAS)
+        cropped.show()
