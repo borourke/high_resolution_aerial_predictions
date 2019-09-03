@@ -94,7 +94,7 @@ for ground_truth_image_name in ground_truth_images:
                 if(score < CONFIDENCE_THRESHOLD):
                     continue
 
-                if((str(LABELS[label]) != class_selection) and (class_selection != '5')):
+                if((int(str(LABELS[label])) != int(class_selection)) and (int(class_selection) != 5)):
                     continue
 
                 # convert the bounding box coordinates from floats to integers
@@ -119,23 +119,37 @@ for ground_truth_image_name in ground_truth_images:
     img = cv2.imread(ground_truth_image_path)
     for prediction in ground_truth_image_predictions:
         object_class = CLASSES[str(prediction['class'])]
-        if(object_class == 'SUV/Truck'):
-            box_color = (0,255,0)
-        elif(object_class == 'Sedan'):
-            box_color = (255,0,0)
-        elif(object_class == 'Other'):
-            box_color = (0,0,255)
-        else:
-            box_color = (255,255,255)
-        top_left = (int(prediction['xmin']), int(prediction['ymax']))
-        bottom_right = (int(prediction['xmax']), int(prediction['ymin']))
         font                   = cv2.FONT_HERSHEY_SIMPLEX
         bottomLeftCornerOfText = (prediction['xmax'],prediction['ymax'])
         fontScale              = 1
-        fontColor              = box_color
+        fontColor              = (255,255,255)
         lineType               = 2
-        img = cv2.rectangle(img, top_left, bottom_right, box_color, 1)
-        img = cv2.putText(img, object_class, bottomLeftCornerOfText, font, fontScale, fontColor, lineType)
+        top_left = (int(prediction['xmin']), int(prediction['ymax']))
+        bottom_left = (int(prediction['xmin']), int(prediction['ymin']))
+        bottom_right = (int(prediction['xmax']), int(prediction['ymin']))
+        top_right = (int(prediction['xmax']), int(prediction['ymax']))
+        x_length = int(prediction['xmax']) - int(prediction['xmin'])
+        y_length = int(prediction['ymax']) - int(prediction['ymin'])
+        centroid = (int(int(prediction['xmin']) + (x_length/2)), int(int(prediction['ymin'] + (y_length/2))))
+        # rectangle
+        if(object_class == 'SUV/Truck'):
+            img = cv2.rectangle(img, top_left, bottom_right, (255,255,255), 1)
+            print("DOING RECTANGLE")
+        # triangle
+        elif(object_class == 'Sedan'):
+            pt1 = (int(prediction['xmin']) + (x_length/2), int(prediction['ymax']))
+            pt2 = bottom_left
+            pt3 = bottom_right
+            pts = np.array([pt1, pt2, pt3], dtype=np.int32)
+            img = cv2.polylines(img, [pts], isClosed=True, color=(255,255,255), thickness=1)
+            print("DOING TRIANGLE")
+        # circle
+        elif(object_class == 'Other'):
+            img = cv2.circle(img, centroid, int(x_length/2), (255,255,255))
+            print("DOING CIRLCE")
+        else:
+            img = cv2.circle(img, centroid, int(x_length/2), (255,255,255))
+            print("DOING CIRCLE")
 
     cv2.imwrite(os.path.sep.join([OUTPUT_FILE_PATH, "predicted-{}".format(ground_truth_image_name)]), img)
 
